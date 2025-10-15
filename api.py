@@ -6,7 +6,9 @@ from typing import Any
 import aiohttp
 
 from .const import (
+    FIREBASE_ACCOUNT_INFO_URL,
     FIREBASE_INSTALLATIONS_URL,
+    FIREBASE_REMOTE_CONFIG_URL,
     FIREBASE_SIGNUP_URL,
     FIREBASE_TOKEN_URL,
     GOOGLE_ANDROID_CERT,
@@ -49,23 +51,31 @@ class KwattApiClient:
             if not await self._get_firebase_installation():
                 return False
 
-            # Step 2: Sign up new user (anonymous)
+            # Step 2: Fetch Firebase Remote Config
+            if not await self._firebase_fetch():
+                return False
+
+            # Step 3: Sign up new user (anonymous)
             if not await self._signup_new_user():
                 return False
 
-            # Step 3: Update user profile
+            # Step 4: Get account information
+            if not await self._get_account_info():
+                return False
+
+            # Step 5: Update user profile
             if not await self._update_user_profile():
                 return False
 
-            # Step 4: Request pairing with CIC
+            # Step 6: Request pairing with CIC
             if not await self._request_pair():
                 return False
 
-            # Step 5: Wait for user to press button on CIC and verify pairing
+            # Step 7: Wait for user to press button on CIC and verify pairing
             if not await self._wait_for_pairing():
                 return False
 
-            # Step 6: Get installation ID
+            # Step 8: Get installation ID
             if not await self._get_installation_id():
                 return False
 
@@ -111,6 +121,53 @@ class KwattApiClient:
             _LOGGER.error("Firebase installation error: %s", err)
             return False
 
+    async def _firebase_fetch(self) -> bool:
+        """Fetch Firebase Remote Config."""
+        if not self._firebase_auth_token:
+            return False
+
+        headers = {
+            "X-Android-Cert": GOOGLE_ANDROID_CERT,
+            "X-Android-Package": GOOGLE_ANDROID_PACKAGE,
+            "X-Goog-Api-Key": GOOGLE_API_KEY,
+            "X-Google-GFE-Can-Retry": "yes",
+            "X-Goog-Firebase-Installations-Auth": self._firebase_auth_token,
+            "X-Firebase-RC-Fetch-Type": "BASE/1",
+        }
+
+        payload = {
+            "appVersion": "1.42.0",
+            "firstOpenTime": "2025-10-14T15:00:00.000Z",
+            "timeZone": "Europe/Amsterdam",
+            "appInstanceIdToken": self._firebase_auth_token,
+            "languageCode": "en-US",
+            "appBuild": "964",
+            "appInstanceId": GOOGLE_APP_INSTANCE_ID,
+            "countryCode": "US",
+            "analyticsUserProperties": {},
+            "appId": GOOGLE_APP_ID,
+            "platformVersion": "33",
+            "sdkVersion": "23.0.1",
+            "packageName": GOOGLE_ANDROID_PACKAGE,
+        }
+
+        try:
+            async with self._session.post(
+                FIREBASE_REMOTE_CONFIG_URL,
+                json=payload,
+                headers=headers,
+            ) as response:
+                if response.status == 200:
+                    _LOGGER.debug("Firebase remote config fetched successfully")
+                    return True
+                _LOGGER.error(
+                    "Firebase remote config fetch failed: %s", await response.text()
+                )
+                return False
+        except Exception as err:
+            _LOGGER.error("Firebase remote config fetch error: %s", err)
+            return False
+
     async def _signup_new_user(self) -> bool:
         """Sign up new anonymous user with Firebase."""
         headers = {
@@ -141,6 +198,38 @@ class KwattApiClient:
                 return False
         except Exception as err:
             _LOGGER.error("User signup error: %s", err)
+            return False
+
+    async def _get_account_info(self) -> bool:
+        """Get account information from Firebase."""
+        if not self._id_token:
+            return False
+
+        headers = {
+            "X-Android-Cert": GOOGLE_ANDROID_CERT,
+            "X-Android-Package": GOOGLE_ANDROID_PACKAGE,
+            "X-Client-Version": "Android/Fallback/X24000001/FirebaseCore-Android",
+            "X-Firebase-GMPID": GOOGLE_APP_ID,
+            "X-Firebase-Client": GOOGLE_FIREBASE_CLIENT,
+        }
+
+        payload = {"idToken": self._id_token}
+
+        url = f"{FIREBASE_ACCOUNT_INFO_URL}?key={GOOGLE_API_KEY}"
+
+        try:
+            async with self._session.post(
+                url,
+                json=payload,
+                headers=headers,
+            ) as response:
+                if response.status == 200:
+                    _LOGGER.debug("Account info retrieved successfully")
+                    return True
+                _LOGGER.error("Get account info failed: %s", await response.text())
+                return False
+        except Exception as err:
+            _LOGGER.error("Get account info error: %s", err)
             return False
 
     async def _update_user_profile(self) -> bool:
