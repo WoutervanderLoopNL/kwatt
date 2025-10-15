@@ -1,0 +1,26 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up Kwatt",
+        "description": "Enter your CIC (Customer Installation Code) to connect to your Kwatt device. The CIC must start with 'CIC-'.",
+        "data": {
+          "cic": "CIC (Customer Installation Code)"
+        }
+      },
+      "pair": {
+        "title": "Pair with your Kwatt device",
+        "description": "Please press the button on your CIC device ({cic}) now.\n\n![Pairing button location](/local/kwatt/pair.png)\n\nYou have 60 seconds to complete the pairing.\n\nPress 'Submit' to start the pairing process and wait for confirmation."
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect to Kwatt API. Please check your CIC and try again.",
+      "invalid_cic": "Invalid CIC format. CIC must start with 'CIC-'.",
+      "pairing_timeout": "Pairing timeout. The button was not pressed within 60 seconds. Please try again.",
+      "unknown": "Unexpected error occurred"
+    },
+    "abort": {
+      "already_configured": "This CIC is already configured"
+    }
+  }
+}
