@@ -1,0 +1,12 @@
+{
+  "domain": "kwatt",
+  "name": "Kwatt",
+  "codeowners": ["@WoutervanderLoopNL"],
+  "config_flow": true,
+  "documentation": "https://github.com/WoutervanderLoopNL/kwatt",
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/WoutervanderLoopNL/kwatt/issues",
+  "requirements": ["aiohttp>=3.8.0"],
+  "version": "0.1.0"
+}
