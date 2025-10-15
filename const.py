@@ -5,7 +5,9 @@ CONF_CIC = "cic"
 
 # API URLs
 FIREBASE_INSTALLATIONS_URL = "https://firebaseinstallations.googleapis.com/v1/projects/quatt-production/installations"
+FIREBASE_REMOTE_CONFIG_URL = "https://firebaseremoteconfig.googleapis.com/v1/projects/1074628551428/namespaces/firebase:fetch"
 FIREBASE_SIGNUP_URL = "https://www.googleapis.com/identitytoolkit/v3/relyingparty/signupNewUser"
+FIREBASE_ACCOUNT_INFO_URL = "https://www.googleapis.com/identitytoolkit/v3/relyingparty/getAccountInfo"
 FIREBASE_TOKEN_URL = "https://securetoken.googleapis.com/v1/token"
 QUATT_API_BASE_URL = "https://mobile-api.quatt.io/api/v1"
 
