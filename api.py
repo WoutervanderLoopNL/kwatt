@@ -33,10 +33,12 @@ class KwattApiClient:
         self,
         cic: str,
         session: aiohttp.ClientSession,
+        store=None,
     ) -> None:
         """Initialize the API client."""
         self.cic = cic
         self._session = session
+        self._store = store
         self._id_token: str | None = None
         self._refresh_token: str | None = None
         self._fid: str | None = None
@@ -44,9 +46,56 @@ class KwattApiClient:
         self._installation_id: str | None = None
         self._pairing_completed: bool = False
 
+    def load_tokens(
+        self,
+        id_token: str | None,
+        refresh_token: str | None,
+        installation_id: str | None,
+    ) -> None:
+        """Load tokens from storage."""
+        self._id_token = id_token
+        self._refresh_token = refresh_token
+        self._installation_id = installation_id
+        if id_token:
+            _LOGGER.debug("Tokens loaded from storage")
+
+    async def _save_tokens(self) -> None:
+        """Save tokens to storage."""
+        if self._store:
+            await self._store.async_save({
+                "id_token": self._id_token,
+                "refresh_token": self._refresh_token,
+                "installation_id": self._installation_id,
+            })
+            _LOGGER.debug("Tokens saved to storage")
+
     async def authenticate(self) -> bool:
         """Authenticate with Firebase and Quatt API."""
         try:
+            # Check if we have existing tokens
+            if self._id_token and self._refresh_token:
+                _LOGGER.debug("Using existing tokens")
+                # Try to validate token by getting CIC data
+                cic_data = await self.get_cic_data()
+
+                if cic_data:
+                    _LOGGER.info("Successfully authenticated with existing tokens")
+                    return True
+
+                # Token might be expired, try refresh
+                _LOGGER.debug("Existing token failed, attempting refresh")
+                if await self.refresh_token():
+                    await self._save_tokens()
+                    # Verify refreshed token works
+                    cic_data = await self.get_cic_data()
+                    if cic_data:
+                        _LOGGER.info("Successfully authenticated with refreshed token")
+                        return True
+
+                # Refresh failed, fall through to full auth
+                _LOGGER.warning("Token refresh failed, performing full authentication")
+
+            # Full authentication flow (needed for initial setup or when tokens fail)
             # Step 1: Get Firebase Installation ID
             if not await self._get_firebase_installation():
                 return False
@@ -78,6 +127,9 @@ class KwattApiClient:
             # Step 8: Get installation ID
             if not await self._get_installation_id():
                 return False
+
+            # Save tokens after successful authentication
+            await self._save_tokens()
 
             return True
         except Exception as err:
@@ -306,12 +358,10 @@ class KwattApiClient:
 
                         if cic_ids and self.cic in cic_ids:
                             _LOGGER.info("Pairing completed successfully!")
-                            _LOGGER.warning("Pairing completed successfully!")
                             self._pairing_completed = True
                             return True
 
                         _LOGGER.debug("Pairing not yet completed, waiting...")
-                        _LOGGER.warning("Pairing not yet completed, waiting...")
                     else:
                         _LOGGER.warning("Failed to check pairing status: %s", await response.text())
             except Exception as err:
@@ -340,7 +390,6 @@ class KwattApiClient:
             if external_id and external_id.startswith("INS-"):
                 self._installation_id = external_id
                 _LOGGER.info("Installation ID: %s", self._installation_id)
-                _LOGGER.warning("Installation ID: %s", self._installation_id)
                 return True
 
         _LOGGER.error("No valid installation ID found")
@@ -403,7 +452,7 @@ class KwattApiClient:
             _LOGGER.error("Get installations error: %s", err)
             return []
 
-    async def get_cic_data(self) -> dict[str, Any] | None:
+    async def get_cic_data(self, retry_on_403: bool = True) -> dict[str, Any] | None:
         """Get CIC device data."""
         if not self._id_token:
             return None
@@ -415,7 +464,18 @@ class KwattApiClient:
             async with self._session.get(url, headers=headers) as response:
                 if response.status == 200:
                     return await response.json()
-                _LOGGER.error("Get CIC data failed: %s", await response.text())
+
+                # Handle 403 Forbidden - token might be expired
+                if response.status == 403 and retry_on_403:
+                    _LOGGER.warning("Got 403, attempting to refresh token")
+                    if await self.refresh_token():
+                        await self._save_tokens()
+                        # Retry once with new token (prevent infinite loop with retry_on_403=False)
+                        return await self.get_cic_data(retry_on_403=False)
+                    _LOGGER.error("Token refresh failed after 403")
+                    return None
+
+                _LOGGER.error("Get CIC data failed with status %s: %s", response.status, await response.text())
                 return None
         except Exception as err:
             _LOGGER.error("Get CIC data error: %s", err)
